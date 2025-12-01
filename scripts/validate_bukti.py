@@ -1699,9 +1699,81 @@ def is_suspicious_nominal_pair(num1, num2):
     return False
 
 # ========== ELA FOKUS FIELD KRUSIAL ==========
+# def error_level_analysis_critical_fields(image_path, regions, quality=90):
+#     """
+#     ELA dengan prioritas pada field krusial
+#     """
+#     original = Image.open(image_path).convert('RGB')
+#     temp_path = "temp_ela.jpg"
+    
+#     original.save(temp_path, 'JPEG', quality=quality)
+#     compressed = Image.open(temp_path)
+    
+#     ela_image = ImageChops.difference(original, compressed)
+#     extrema = ela_image.getextrema()
+#     max_diff = max([ex[1] for ex in extrema])
+    
+#     if max_diff == 0:
+#         max_diff = 1
+#     scale = 255.0 / max_diff
+#     ela_image = ImageEnhance.Brightness(ela_image).enhance(scale)
+    
+#     ela_array = np.array(ela_image)
+    
+#     # Analisis per field dengan weighted priority
+#     field_scores = []
+    
+#     for region in regions:
+#         x, y, w, h = region['box']
+        
+#         # Expand slightly
+#         x = max(0, x - 10)
+#         y = max(0, y - 10)
+#         w = min(ela_array.shape[1] - x, w + 20)
+#         h = min(ela_array.shape[0] - y, h + 20)
+        
+#         roi = ela_array[y:y+h, x:x+w]
+        
+#         roi_mean = np.mean(roi)
+#         roi_p95 = np.percentile(roi, 95)
+#         roi_std = np.std(roi)
+#         roi_max = np.max(roi)
+        
+#         # Weighted score berdasarkan priority
+#         weighted_score = (roi_mean * 0.3 + roi_p95 * 0.4 + roi_std * 0.2 + roi_max * 0.1) * region['priority'] / 10
+        
+#         field_scores.append({
+#             'region': region,
+#             'ela_mean': roi_mean,
+#             'ela_p95': roi_p95,
+#             'ela_std': roi_std,
+#             'ela_max': roi_max,
+#             'weighted_score': weighted_score
+#         })
+    
+#     # Overall weighted ELA
+#     if field_scores:
+#         critical_fields = [f for f in field_scores if f['region']['priority'] >= 7]
+        
+#         if critical_fields:
+#             weighted_ela = np.average(
+#                 [f['ela_mean'] for f in critical_fields],
+#                 weights=[f['region']['priority'] for f in critical_fields]
+#             )
+#         else:
+#             weighted_ela = np.mean([f['ela_mean'] for f in field_scores])
+#     else:
+#         weighted_ela = np.mean(ela_array)
+    
+#     # Cleanup
+#     if os.path.exists(temp_path):
+#         os.remove(temp_path)
+    
+#     return ela_array, weighted_ela, field_scores
+
 def error_level_analysis_critical_fields(image_path, regions, quality=90):
     """
-    ELA dengan prioritas pada field krusial
+    ELA dengan prioritas pada field krusial - VERSI LEBIH LONGGAR
     """
     original = Image.open(image_path).convert('RGB')
     temp_path = "temp_ela.jpg"
@@ -1720,7 +1792,7 @@ def error_level_analysis_critical_fields(image_path, regions, quality=90):
     
     ela_array = np.array(ela_image)
     
-    # Analisis per field dengan weighted priority
+    # Analisis per field dengan weighted priority (FORMULA LEBIH LONGGAR)
     field_scores = []
     
     for region in regions:
@@ -1739,8 +1811,12 @@ def error_level_analysis_critical_fields(image_path, regions, quality=90):
         roi_std = np.std(roi)
         roi_max = np.max(roi)
         
-        # Weighted score berdasarkan priority
-        weighted_score = (roi_mean * 0.3 + roi_p95 * 0.4 + roi_std * 0.2 + roi_max * 0.1) * region['priority'] / 10
+        # REVISI: Weighted score dengan bobot lebih rendah dan threshold lebih tinggi
+        # Mengurangi sensitivitas dengan:
+        # 1. Menurunkan bobot priority dari /10 menjadi /15
+        # 2. Menurunkan bobot p95 dari 0.4 menjadi 0.25
+        # 3. Menambah bobot mean dari 0.3 menjadi 0.4
+        weighted_score = (roi_mean * 0.4 + roi_p95 * 0.25 + roi_std * 0.15 + roi_max * 0.05) * region['priority'] / 15
         
         field_scores.append({
             'region': region,
@@ -1819,72 +1895,211 @@ def analyze_layout_pattern(regions):
     }
 
 # ========== SCORING SYSTEM ADVANCED ==========
+# def calculate_authenticity_score_advanced(metrics, regions_count):
+#     """
+#     Sistem scoring super detail
+#     """
+#     if regions_count == 0:
+#         return 20.0, ["⚠️ Tidak ada teks yang terdeteksi"]
+    
+#     base_score = 100.0
+#     penalties = []
+#     critical_issues = []
+    
+#     # === KATEGORI 1: ELA ANALYSIS (30%) ===
+#     if metrics['weighted_ela'] > 16:
+#         penalty = min((metrics['weighted_ela'] - 16) / 34 * 30, 30)
+#         base_score -= penalty
+#         if penalty > 20:
+#             critical_issues.append(f"🔴 ELA sangat tinggi pada field krusial ({metrics['weighted_ela']:.1f})")
+#         else:
+#             penalties.append(f"ELA tinggi ({metrics['weighted_ela']:.1f})")
+    
+#     # === KATEGORI 2: NOMINAL CROSS-VALIDATION (25%) ===
+#     if metrics['nominal_conflicts'] > 0:
+#         penalty = min(metrics['nominal_conflicts'] * 15, 25)
+#         base_score -= penalty
+#         critical_issues.append(f"🔴 {metrics['nominal_conflicts']} konflik nominal terdeteksi")
+    
+#     if metrics['nominal_consistency'] < 0.8:
+#         penalty = (1.0 - metrics['nominal_consistency']) * 15
+#         base_score -= penalty
+#         penalties.append(f"Konsistensi nominal rendah ({metrics['nominal_consistency']:.2f})")
+    
+#     # === KATEGORI 3: FONT CONSISTENCY (20%) ===
+#     if metrics['font_inconsistencies'] > 0:
+#         penalty = min(metrics['font_inconsistencies'] * 8, 20)
+#         base_score -= penalty
+#         if metrics['font_inconsistencies'] >= 2:
+#             critical_issues.append(f"🔴 {metrics['font_inconsistencies']} inkonsistensi font")
+#         else:
+#             penalties.append(f"Inkonsistensi font terdeteksi")
+    
+#     if metrics['font_height_cv'] > 0.3:
+#         penalty = min((metrics['font_height_cv'] - 0.3) / 0.4 * 12, 12)
+#         base_score -= penalty
+#         penalties.append(f"Variasi ukuran font ({metrics['font_height_cv']:.2f})")
+    
+#     # === KATEGORI 4: SPACING ANALYSIS (15%) ===
+#     if metrics['spacing_irregularities'] > 0:
+#         penalty = min(metrics['spacing_irregularities'] * 6, 15)
+#         base_score -= penalty
+#         if metrics['spacing_irregularities'] >= 2:
+#             critical_issues.append(f"🔴 {metrics['spacing_irregularities']} spacing tidak natural")
+#         else:
+#             penalties.append(f"Spacing irregularities")
+    
+#     if metrics['vertical_spacing_cv'] > 0.4:
+#         penalty = min((metrics['vertical_spacing_cv'] - 0.4) / 0.5 * 10, 10)
+#         base_score -= penalty
+#         penalties.append(f"Spacing vertikal tidak konsisten")
+    
+#     # === KATEGORI 5: LAYOUT PATTERN (10%) ===
+#     if metrics['alignment_score'] < 0.7:
+#         penalty = (1.0 - metrics['alignment_score']) * 10
+#         base_score -= penalty
+#         penalties.append(f"Layout pattern tidak natural")
+    
+#     return max(base_score, 0), penalties, critical_issues
+
 def calculate_authenticity_score_advanced(metrics, regions_count):
     """
-    Sistem scoring super detail
+    Sistem scoring super detail - VERSI LEBIH TOLERAN
     """
     if regions_count == 0:
-        return 20.0, ["⚠️ Tidak ada teks yang terdeteksi"]
+        return 20.0, ["⚠️ Tidak ada teks yang terdeteksi"], []
     
     base_score = 100.0
     penalties = []
     critical_issues = []
     
-    # === KATEGORI 1: ELA ANALYSIS (30%) ===
-    if metrics['weighted_ela'] > 16:
-        penalty = min((metrics['weighted_ela'] - 16) / 34 * 30, 30)
+    # === KATEGORI 1: ELA ANALYSIS (30%) - THRESHOLD DINAIKKAN ===
+    # REVISI: Threshold dari 16 menjadi 25 (lebih longgar)
+    if metrics['weighted_ela'] > 25:
+        penalty = min((metrics['weighted_ela'] - 25) / 50 * 30, 30)
         base_score -= penalty
-        if penalty > 20:
+        # REVISI: Critical threshold dari 20 menjadi 25
+        if penalty > 25:
             critical_issues.append(f"🔴 ELA sangat tinggi pada field krusial ({metrics['weighted_ela']:.1f})")
         else:
             penalties.append(f"ELA tinggi ({metrics['weighted_ela']:.1f})")
     
-    # === KATEGORI 2: NOMINAL CROSS-VALIDATION (25%) ===
+    # === KATEGORI 2: NOMINAL CROSS-VALIDATION (25%) - PENALTY DIKURANGI ===
     if metrics['nominal_conflicts'] > 0:
-        penalty = min(metrics['nominal_conflicts'] * 15, 25)
+        # REVISI: Penalty per conflict dari 15 menjadi 10
+        penalty = min(metrics['nominal_conflicts'] * 10, 25)
         base_score -= penalty
         critical_issues.append(f"🔴 {metrics['nominal_conflicts']} konflik nominal terdeteksi")
     
-    if metrics['nominal_consistency'] < 0.8:
-        penalty = (1.0 - metrics['nominal_consistency']) * 15
+    # REVISI: Threshold consistency dari 0.8 menjadi 0.65
+    if metrics['nominal_consistency'] < 0.65:
+        penalty = (1.0 - metrics['nominal_consistency']) * 12
         base_score -= penalty
         penalties.append(f"Konsistensi nominal rendah ({metrics['nominal_consistency']:.2f})")
     
-    # === KATEGORI 3: FONT CONSISTENCY (20%) ===
+    # === KATEGORI 3: FONT CONSISTENCY (20%) - LEBIH TOLERAN ===
     if metrics['font_inconsistencies'] > 0:
-        penalty = min(metrics['font_inconsistencies'] * 8, 20)
+        # REVISI: Penalty per inconsistency dari 8 menjadi 5
+        penalty = min(metrics['font_inconsistencies'] * 5, 20)
         base_score -= penalty
-        if metrics['font_inconsistencies'] >= 2:
+        # REVISI: Threshold dari 2 menjadi 3
+        if metrics['font_inconsistencies'] >= 3:
             critical_issues.append(f"🔴 {metrics['font_inconsistencies']} inkonsistensi font")
         else:
             penalties.append(f"Inkonsistensi font terdeteksi")
     
-    if metrics['font_height_cv'] > 0.3:
-        penalty = min((metrics['font_height_cv'] - 0.3) / 0.4 * 12, 12)
+    # REVISI: Threshold CV dari 0.3 menjadi 0.5
+    if metrics['font_height_cv'] > 0.5:
+        penalty = min((metrics['font_height_cv'] - 0.5) / 0.6 * 12, 12)
         base_score -= penalty
         penalties.append(f"Variasi ukuran font ({metrics['font_height_cv']:.2f})")
     
-    # === KATEGORI 4: SPACING ANALYSIS (15%) ===
+    # === KATEGORI 4: SPACING ANALYSIS (15%) - LEBIH TOLERAN ===
     if metrics['spacing_irregularities'] > 0:
-        penalty = min(metrics['spacing_irregularities'] * 6, 15)
+        # REVISI: Penalty per irregularity dari 6 menjadi 4
+        penalty = min(metrics['spacing_irregularities'] * 4, 15)
         base_score -= penalty
-        if metrics['spacing_irregularities'] >= 2:
+        # REVISI: Threshold dari 2 menjadi 3
+        if metrics['spacing_irregularities'] >= 3:
             critical_issues.append(f"🔴 {metrics['spacing_irregularities']} spacing tidak natural")
         else:
             penalties.append(f"Spacing irregularities")
     
-    if metrics['vertical_spacing_cv'] > 0.4:
-        penalty = min((metrics['vertical_spacing_cv'] - 0.4) / 0.5 * 10, 10)
+    # REVISI: Threshold dari 0.4 menjadi 0.6
+    if metrics['vertical_spacing_cv'] > 0.6:
+        penalty = min((metrics['vertical_spacing_cv'] - 0.6) / 0.7 * 10, 10)
         base_score -= penalty
         penalties.append(f"Spacing vertikal tidak konsisten")
     
-    # === KATEGORI 5: LAYOUT PATTERN (10%) ===
-    if metrics['alignment_score'] < 0.7:
+    # === KATEGORI 5: LAYOUT PATTERN (10%) - LEBIH TOLERAN ===
+    # REVISI: Threshold dari 0.7 menjadi 0.5
+    if metrics['alignment_score'] < 0.5:
         penalty = (1.0 - metrics['alignment_score']) * 10
         base_score -= penalty
         penalties.append(f"Layout pattern tidak natural")
     
     return max(base_score, 0), penalties, critical_issues
+
+def save_detailed_analysis(original_path, ela_image, regions, field_scores, conflicts):
+    """
+    Simpan gambar dengan analisis detail - THRESHOLD SUSPICIOUS LEBIH TINGGI
+    """
+    original = cv2.imread(original_path)
+    
+    if original is None:
+        return
+    
+    try:
+        # Gambar 1: Highlight field krusial
+        highlighted = original.copy()
+        
+        # Sort by priority
+        sorted_scores = sorted(field_scores, key=lambda x: x['weighted_score'], reverse=True)
+        
+        for i, score_data in enumerate(sorted_scores[:10]):
+            region = score_data['region']
+            x, y, w, h = region['box']
+            
+            # REVISI: Threshold untuk warna lebih tinggi (lebih sedikit yang merah)
+            # Threshold dari 50/30 menjadi 70/45
+            if score_data['weighted_score'] > 70:
+                color = (0, 0, 255)  # Red - very suspicious
+            elif score_data['weighted_score'] > 45:
+                color = (0, 165, 255)  # Orange - suspicious
+            elif region['priority'] >= 8:
+                color = (0, 255, 255)  # Yellow - critical field
+            else:
+                color = (0, 255, 0)  # Green - normal
+            
+            thickness = 3 if region['priority'] >= 8 else 2
+            
+            cv2.rectangle(highlighted, (x-5, y-5), (x+w+5, y+h+5), color, thickness)
+            
+            # Label
+            label = f"{region['field_type'][:3]}: {score_data['weighted_score']:.0f}"
+            cv2.putText(highlighted, label, (x, y-10), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        
+        # Mark conflicts
+        for conflict in conflicts:
+            # Find regions
+            for region in regions:
+                if conflict['text1'] in region['text'] or conflict['text2'] in region['text']:
+                    x, y, w, h = region['box']
+                    cv2.rectangle(highlighted, (x-8, y-8), (x+w+8, y+h+8), (255, 0, 255), 3)
+        
+        cv2.imwrite("analysis_detailed.png", highlighted)
+        
+        # Gambar 2: ELA
+        storage_folder = "../storage/app/public/hasil_ela"
+        os.makedirs(storage_folder, exist_ok=True)
+        
+        ela_pil = Image.fromarray(ela_image.astype('uint8'))
+        ela_pil.save("ela.png")
+        ela_pil.save(os.path.join(storage_folder, "ela.png"))
+        
+    except Exception as e:
+        print(f"Error saving images: {e}")
 
 # ========== PENYIMPANAN GAMBAR ==========
 def save_detailed_analysis(original_path, ela_image, regions, field_scores, conflicts):
