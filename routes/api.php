@@ -60,9 +60,9 @@ Route::post('/process-image', function (Request $request) {
     }
 
     // Hapus gambar setelah diproses
-    if (file_exists($path)) {
-        unlink($path);
-    }
+    // if (file_exists($path)) {
+    //     unlink($path);
+    // }
     
     return response()->json([
         'success' => true,
